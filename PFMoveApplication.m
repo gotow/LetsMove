@@ -13,26 +13,16 @@
 #import <dlfcn.h>
 #import <sys/mount.h>
 
-@interface LetsMove : NSObject
-@end
-
-@implementation LetsMove
-+ (NSBundle *)bundle {
-	return [NSBundle bundleForClass:self];
-}
-@end
-
 // Strings
 // These are macros to be able to use custom i18n tools
-#define _I10NS(nsstr) NSLocalizedStringFromTableInBundle(nsstr, @"MoveApplication", [LetsMove bundle], nil)
-#define kStrMoveApplicationCouldNotMove _I10NS(@"Could not move to Applications folder")
-#define kStrMoveApplicationQuestionTitle  _I10NS(@"Move to Applications folder?")
-#define kStrMoveApplicationQuestionTitleHome _I10NS(@"Move to Applications folder in your Home folder?")
-#define kStrMoveApplicationQuestionMessage _I10NS(@"I can move myself to the Applications folder if you'd like.")
-#define kStrMoveApplicationButtonMove _I10NS(@"Move to Applications Folder")
-#define kStrMoveApplicationButtonDoNotMove _I10NS(@"Do Not Move")
-#define kStrMoveApplicationQuestionInfoWillRequirePasswd _I10NS(@"Note that this will require an administrator password.")
-#define kStrMoveApplicationQuestionInfoInDownloadsFolder _I10NS(@"This will keep your Downloads folder uncluttered.")
+#define kStrMoveApplicationCouldNotMove NSLocalizedStringFromTable(@"Could not move to Applications folder", @"MoveApplication", @"")
+#define kStrMoveApplicationQuestionTitle  NSLocalizedStringFromTable(@"Move to Applications folder?", @"MoveApplication", @"")
+#define kStrMoveApplicationQuestionTitleHome NSLocalizedStringFromTable(@"Move to Applications folder in your Home folder?", @"MoveApplication", @"")
+#define kStrMoveApplicationQuestionMessage NSLocalizedStringFromTable(@"I can move myself to the Applications folder if you'd like.", @"MoveApplication", @"")
+#define kStrMoveApplicationButtonMove NSLocalizedStringFromTable(@"Move to Applications Folder", @"MoveApplication", @"")
+#define kStrMoveApplicationButtonDoNotMove NSLocalizedStringFromTable(@"Do Not Move", @"MoveApplication", @"")
+#define kStrMoveApplicationQuestionInfoWillRequirePasswd NSLocalizedStringFromTable(@"Note that this will require an administrator password.", @"MoveApplication", @"")
+#define kStrMoveApplicationQuestionInfoInDownloadsFolder NSLocalizedStringFromTable(@"This will keep your Downloads folder uncluttered.", @"MoveApplication", @"")
 
 // Needs to be defined for compiling under 10.5 SDK
 #ifndef NSAppKitVersionNumber10_5
@@ -197,7 +187,7 @@ void PFMoveToApplicationsFolderIfNecessary(void) {
 		// NOTE: This final delete does not work if the source bundle is in a network mounted volume.
 		//       Calling rm or file manager's delete method doesn't work either. It's unlikely to happen
 		//       but it'd be great if someone could fix this.
-		if (!isNestedApplication && diskImageDevice == nil && !DeleteOrTrash(bundlePath)) {
+		if (!isNestedApplication && diskImageDevice == nil && [fm isWritableFileAtPath:bundlePath] && !DeleteOrTrash(bundlePath)) {
 			NSLog(@"WARNING -- Could not delete application after moving it to Applications folder");
 		}
 
@@ -241,15 +231,22 @@ BOOL PFMoveIsInProgress() {
 
 static NSString *PreferredInstallLocation(BOOL *isUserDirectory) {
 	// Return the preferred install location.
-	// Assume that if the user has a ~/Applications folder, they'd prefer their
-	// applications to go there.
+    // If there's already a copy of our app installed in /Applications, replace
+    // that copy. Otherwise, assume that if the user has a ~/Applications folder
+    // with at least one app in it, they'd prefer their applications to go there.
 
 	NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
+    NSString *bundleName = [bundlePath lastPathComponent];
 
 	NSArray *userApplicationsDirs = NSSearchPathForDirectoriesInDomains(NSApplicationDirectory, NSUserDomainMask, YES);
-
-	if ([userApplicationsDirs count] > 0) {
+    NSString *localApplicationsDir = [NSSearchPathForDirectoriesInDomains(NSApplicationDirectory, NSLocalDomainMask, YES) lastObject];
+    
+    BOOL isInstalledInLocalApplicationsDir = [fm fileExistsAtPath:[localApplicationsDir stringByAppendingPathComponent:bundleName]];
+    
+    if([userApplicationsDirs count] > 0) {
 		NSString *userApplicationsDir = [userApplicationsDirs objectAtIndex:0];
+        BOOL isInstalledInUserApplicationsDir = [fm fileExistsAtPath:[userApplicationsDir stringByAppendingPathComponent:bundleName]];
 		BOOL isDirectory;
 
 		if ([fm fileExistsAtPath:userApplicationsDir isDirectory:&isDirectory] && isDirectory) {
@@ -258,7 +255,7 @@ static NSString *PreferredInstallLocation(BOOL *isUserDirectory) {
 
 			// Check if there is at least one ".app" inside the directory.
 			for (NSString *contentsPath in contents) {
-				if ([[contentsPath pathExtension] isEqualToString:@"app"]) {
+				if (isInstalledInUserApplicationsDir || ([[contentsPath pathExtension] isEqualToString:@"app"] && !isInstalledInLocalApplicationsDir)) {
 					if (isUserDirectory) *isUserDirectory = YES;
 					return [userApplicationsDir stringByResolvingSymlinksInPath];
 				}
