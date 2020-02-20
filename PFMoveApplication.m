@@ -292,13 +292,13 @@ static BOOL IsInDownloadsFolder(NSString *path) {
 }
 
 static BOOL IsApplicationAtPathRunning(NSString *bundlePath) {
-	bundlePath = [bundlePath stringByStandardizingPath];
+	bundlePath = [bundlePath stringByResolvingSymlinksInPath];
 
 #if MAC_OS_X_VERSION_MAX_ALLOWED > MAC_OS_X_VERSION_10_5
 	// Use the new API on 10.6 or higher to determine if the app is already running
 	if (floor(NSAppKitVersionNumber) > NSAppKitVersionNumber10_5) {
 		for (NSRunningApplication *runningApplication in [[NSWorkspace sharedWorkspace] runningApplications]) {
-			NSString *runningAppBundlePath = [[[runningApplication bundleURL] path] stringByStandardizingPath];
+			NSString *runningAppBundlePath = [[[runningApplication bundleURL] path] stringByResolvingSymlinksInPath];
 			if ([runningAppBundlePath isEqualToString:bundlePath]) {
 				return YES;
 			}
