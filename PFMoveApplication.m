@@ -12,6 +12,7 @@
 #import <Security/Security.h>
 #import <dlfcn.h>
 #import <sys/mount.h>
+#import <os/log.h>
 
 // Strings
 // These are macros to be able to use custom i18n tools
@@ -42,7 +43,7 @@ static BOOL MoveInProgress = NO;
 static NSString *PreferredInstallLocation(BOOL *isUserDirectory);
 static BOOL IsInApplicationsFolder(NSString *path);
 static BOOL IsInDownloadsFolder(NSString *path);
-static BOOL IsApplicationAtPathRunning(NSString *path);
+// static BOOL IsApplicationAtPathRunning(NSString *path);
 static BOOL IsApplicationAtPathNested(NSString *path);
 static NSString *ContainingDiskImageDevice(NSString *path);
 static BOOL Trash(NSString *path);
@@ -145,7 +146,7 @@ void PFMoveToApplicationsFolderIfNecessary(void) {
 	}
 
 	if ([alert runModal] == NSAlertFirstButtonReturn) {
-		NSLog(@"INFO -- Moving myself to the Applications folder");
+		os_log(OS_LOG_DEFAULT, "INFO -- Moving myself to the Applications folder");
 
 		// Move
 		if (needAuthorization) {
@@ -153,12 +154,12 @@ void PFMoveToApplicationsFolderIfNecessary(void) {
 
 			if (!AuthorizedInstall(bundlePath, destinationPath, &authorizationCanceled)) {
 				if (authorizationCanceled) {
-					NSLog(@"INFO -- Not moving because user canceled authorization");
+					os_log(OS_LOG_DEFAULT, "INFO -- Not moving because user canceled authorization");
 					MoveInProgress = NO;
 					return;
 				}
 				else {
-					NSLog(@"ERROR -- Could not copy myself to /Applications with authorization");
+					os_log(OS_LOG_DEFAULT, "ERROR -- Could not copy myself to /Applications with authorization");
 					goto fail;
 				}
 			}
@@ -166,22 +167,12 @@ void PFMoveToApplicationsFolderIfNecessary(void) {
 		else {
 			// If a copy already exists in the Applications folder, put it in the Trash
 			if ([fm fileExistsAtPath:destinationPath]) {
-				// But first, make sure that it's not running
-				if (IsApplicationAtPathRunning(destinationPath)) {
-					// Give the running app focus and terminate myself
-					NSLog(@"INFO -- Switching to an already running version");
-					[[NSTask launchedTaskWithLaunchPath:@"/usr/bin/open" arguments:[NSArray arrayWithObject:destinationPath]] waitUntilExit];
-					MoveInProgress = NO;
-					exit(0);
-				}
-				else {
-					if (!Trash([applicationsDirectory stringByAppendingPathComponent:bundleName]))
-						goto fail;
-				}
+                if (!Trash([applicationsDirectory stringByAppendingPathComponent:bundleName]))
+                    goto fail;
 			}
 
  			if (!CopyBundle(bundlePath, destinationPath)) {
-				NSLog(@"ERROR -- Could not copy myself to %@", destinationPath);
+				os_log(OS_LOG_DEFAULT, "ERROR -- Could not copy myself to %{public}@", destinationPath);
 				goto fail;
 			}
 		}
@@ -191,7 +182,7 @@ void PFMoveToApplicationsFolderIfNecessary(void) {
 		//       Calling rm or file manager's delete method doesn't work either. It's unlikely to happen
 		//       but it'd be great if someone could fix this.
 		if (!isNestedApplication && diskImageDevice == nil && [fm isWritableFileAtPath:bundlePath] && !DeleteOrTrash(bundlePath)) {
-			NSLog(@"WARNING -- Could not delete application after moving it to Applications folder");
+			os_log(OS_LOG_DEFAULT, "WARNING -- Could not delete application after moving it to Applications folder");
 		}
 
 		// Relaunch.
@@ -208,7 +199,7 @@ void PFMoveToApplicationsFolderIfNecessary(void) {
 		exit(0);
 	}
 	// Save the alert suppress preference if checked
-	else if ([[alert suppressionButton] state] == NSOnState) {
+	else if ([[alert suppressionButton] state] == NSControlStateValueOn) {
 		[[NSUserDefaults standardUserDefaults] setBool:YES forKey:AlertSuppressKey];
 	}
 
@@ -228,7 +219,7 @@ fail:
 	}
 }
 
-BOOL PFMoveIsInProgress() {
+BOOL PFMoveIsInProgress(void) {
     return MoveInProgress;
 }
 
@@ -297,6 +288,7 @@ static BOOL IsInDownloadsFolder(NSString *path) {
 	return NO;
 }
 
+/*
 static BOOL IsApplicationAtPathRunning(NSString *bundlePath) {
 	bundlePath = [bundlePath stringByResolvingSymlinksInPath];
 
@@ -321,6 +313,7 @@ static BOOL IsApplicationAtPathRunning(NSString *bundlePath) {
 	// Which means that the app is already running
 	return [task terminationStatus] == 0;
 }
+*/
 
 static BOOL IsApplicationAtPathNested(NSString *path) {
 	NSString *containingPath = [path stringByDeletingLastPathComponent];
@@ -427,13 +420,13 @@ static BOOL Trash(NSString *path) {
 		NSDictionary *errorDict = nil;
 		NSAppleEventDescriptor *scriptResult = [appleScript executeAndReturnError:&errorDict];
 		if (scriptResult == nil) {
-			NSLog(@"Trash AppleScript error: %@", errorDict);
+			os_log(OS_LOG_DEFAULT, "Trash AppleScript error: %{public}@", errorDict);
 		}
 		result = (scriptResult != nil);
 	}
 
 	if (!result) {
-		NSLog(@"ERROR -- Could not trash '%@'", path);
+		os_log(OS_LOG_DEFAULT, "ERROR -- Could not trash '%{public}@'", path);
 	}
 
 	return result;
@@ -448,7 +441,7 @@ static BOOL DeleteOrTrash(NSString *path) {
 	else {
 		// Don't log warning if on Sierra and running inside App Translocation path
 		if ([path rangeOfString:@"/AppTranslocation/"].location == NSNotFound)
-			NSLog(@"WARNING -- Could not delete '%@': %@", path, [error localizedDescription]);
+			os_log(OS_LOG_DEFAULT, "WARNING -- Could not delete '%{public}@': %{public}@", path, [error localizedDescription]);
 		
 		return Trash(path);
 	}
@@ -536,7 +529,7 @@ static BOOL CopyBundle(NSString *srcPath, NSString *dstPath) {
 		return YES;
 	}
 	else {
-		NSLog(@"ERROR -- Could not copy '%@' to '%@' (%@)", srcPath, dstPath, error);
+		os_log(OS_LOG_DEFAULT, "ERROR -- Could not copy '%{public}@' to '%{public}@' (%{public}@)", srcPath, dstPath, error);
 		return NO;
 	}
 }
